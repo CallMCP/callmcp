@@ -49,7 +49,7 @@ Every "(unverified, recheck before publishing)" cell is a placeholder, not a cla
 
 ## Who builds this, and what's actually free
 
-CallMCP is built and maintained by [CallMCP](https://github.com/callmcp) / [KaiCalls](https://kaicalls.com). Full transparency, because hiding this costs more credibility than stating it:
+CallMCP is built and maintained by [CallMCP](https://github.com/CallMCP) / [KaiCalls](https://kaicalls.com). Full transparency, because hiding this costs more credibility than stating it:
 
 - **This OSS server is not a loss-leader funnel with the real functionality locked behind a paywall.** It routes to any configured driver — hosted, local, or BYOK — with no markup and no artificial capability gating. A self-hosted Dograh driver or a BYOK Twilio+LLM driver gets the exact same 14-tool contract as the KaiCalls driver.
 - **KaiCalls is the hosted default** — the path of least resistance if you want a call backend running in minutes with nothing to self-host. It is not the *only* supported path, and the spec and conformance suite exist precisely so that claim stays true as the driver ecosystem grows.
@@ -103,10 +103,21 @@ callmcp/callmcp
 │   ├── driver-dograh/         local/self-hosted driver
 │   └── driver-byok/           bring-your-own transport + bring-your-own LLM
 ├── examples/                  Claude Desktop / Claude Code config blocks per leg
-├── server.json                official MCP Registry manifest (draft — unpublished)
+├── server.json                official MCP Registry manifest — published as
+│                              ai.callmcp/server (registry.modelcontextprotocol.io)
 ├── smithery.yaml               Smithery container deployment config
 └── Dockerfile                  self-host / Smithery container build
 ```
+
+## Packages
+
+| Package | npm | What it is |
+|---|---|---|
+| [`@callmcp/server`](./packages/server) | [npm](https://www.npmjs.com/package/@callmcp/server) | The MCP server core — start here if you're running CallMCP. |
+| [`@callmcp/driver-interface`](./packages/driver-interface) | [npm](https://www.npmjs.com/package/@callmcp/driver-interface) | The `Driver` contract, capability manifest types, conformance harness. Start here if you're writing a new driver. |
+| [`@callmcp/driver-kaicalls`](./packages/driver-kaicalls) | [npm](https://www.npmjs.com/package/@callmcp/driver-kaicalls) | Hosted default — [KaiCalls](https://kaicalls.com)' production telephony backend. |
+| [`@callmcp/driver-dograh`](./packages/driver-dograh) | [npm](https://www.npmjs.com/package/@callmcp/driver-dograh) | Fully local — wraps a self-hosted [Dograh](https://github.com/dograh-hq/dograh) instance. |
+| [`@callmcp/driver-byok`](./packages/driver-byok) | [npm](https://www.npmjs.com/package/@callmcp/driver-byok) | Bring-your-own-key — Twilio transport + OpenAI Realtime (or wire-compatible) brain. |
 
 ## Contributing a driver
 
