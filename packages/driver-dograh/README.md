@@ -1,5 +1,7 @@
 # @callmcp/driver-dograh
 
+[![npm version](https://img.shields.io/npm/v/@callmcp/driver-dograh)](https://www.npmjs.com/package/@callmcp/driver-dograh)
+
 CallMCP driver for [Dograh](https://github.com/dograh-hq/dograh) — a
 self-hostable, BYO-carrier voice-AI platform. This is the driver you want
 when the goal is **zero cloud telephony accounts**: run Dograh on your own

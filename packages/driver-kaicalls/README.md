@@ -1,5 +1,7 @@
 # @callmcp/driver-kaicalls
 
+[![npm version](https://img.shields.io/npm/v/@callmcp/driver-kaicalls)](https://www.npmjs.com/package/@callmcp/driver-kaicalls)
+
 CallMCP's hosted driver for [KaiCalls](https://www.kaicalls.com) — the
 production 38-tool MCP/REST telephony backend that
 [callmcp.ai](https://callmcp.ai) documents publicly. This is the flagship,

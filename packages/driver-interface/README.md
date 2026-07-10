@@ -1,10 +1,12 @@
 # @callmcp/driver-interface
 
+[![npm version](https://img.shields.io/npm/v/@callmcp/driver-interface)](https://www.npmjs.com/package/@callmcp/driver-interface)
+
 TypeScript contract every CallMCP driver implements. This package is
 intentionally small: types, a conformance test harness, and one reference
 implementation. It has no server, no MCP transport code, and no
 backend-specific HTTP clients — those live in each driver's own package
-(`@callmcp/driver-twilio_openai`, `@callmcp/driver-kaicalls`, etc) and in the
+([`@callmcp/driver-byok`](../driver-byok) — `driver_id: twilio_openai` — [`@callmcp/driver-kaicalls`](../driver-kaicalls), etc) and in the
 server core.
 
 The normative reference for everything in this package is
@@ -43,7 +45,7 @@ So `Driver` has one method per remaining tool: `makeCall`, `endCall`,
 
 ## Writing a new driver
 
-1. **Read `SPEC.md` §1** for the tool you're implementing before you write
+1. **Read [`SPEC.md` §1](../../SPEC.md#1-tool-schemas)** for the tool you're implementing before you write
    any code. The params/result types in `types.ts` are a direct transcription
    of the JSON Schemas there — if something is unclear, the spec's prose
    (and the degradation appendix, §7) is the tiebreaker, not this package's
@@ -81,7 +83,7 @@ So `Driver` has one method per remaining tool: `makeCall`, `endCall`,
 3. **Write your `CapabilityManifest`** (`callmcp.manifest.json` per SPEC
    §6.1, or the equivalent TS object if you build it programmatically).
    Every flag you set `true` is a promise: the matching `Driver` method
-   exists and works end-to-end. Check `SPEC.md` §7 (the degradation
+   exists and works end-to-end. Check [`SPEC.md` §7](../../SPEC.md#7-degradation-appendix) (the degradation
    appendix) for what's realistically achievable on real backends before you
    flip a flag to `true` — several well-known backends genuinely cannot
    support `end_call`, `get_recording`, or `send_sms`, and claiming they can

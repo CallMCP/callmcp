@@ -1,10 +1,14 @@
 # @callmcp/driver-byok
 
+[![npm version](https://img.shields.io/npm/v/@callmcp/driver-byok)](https://www.npmjs.com/package/@callmcp/driver-byok)
+
 `driver_id: twilio_openai`. A CallMCP driver composed from two independent
 pieces you bring your own keys for:
 
-- **Transport** — Twilio (Voice, Programmable Messaging, Phone Numbers).
-- **Brain** — OpenAI's Realtime API (speech-to-speech, GA today). A second
+- **Transport** — [Twilio](https://www.twilio.com/docs) (Voice, Programmable
+  Messaging, Phone Numbers).
+- **Brain** — [OpenAI's Realtime API](https://platform.openai.com/docs/guides/realtime)
+  (speech-to-speech, GA today). A second
   brain (xAI's Grok Voice Agent API, documented as OpenAI-Realtime-wire-
   compatible) is stubbed as a deliberate TODO — see `src/brain/adapter.ts`.
 

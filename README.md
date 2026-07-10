@@ -1,5 +1,8 @@
 # One MCP server. Any call provider. Fully local, fully hosted, or bring your own frontier model.
 
+[![License: MIT](https://img.shields.io/github/license/CallMCP/callmcp)](./LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/CallMCP/callmcp?style=flat&logo=github)](https://github.com/CallMCP/callmcp/stargazers)
+
 CallMCP is a single [Model Context Protocol](https://modelcontextprotocol.io) server that defines **one** tool contract — 14 tools, identical schemas, identical error shapes — for outbound/inbound telephony: calls, SMS, recordings, transcripts, and phone-number lifecycle. Point it at a hosted backend, a fully local backend, or a bring-your-own-key composed backend, and your agent code doesn't change. What changes is *which* tools are present (via capability-gated dynamic discovery), never the shape of a tool that's there.
 
 The normative reference is [`SPEC.md`](./SPEC.md). This README is the pitch; the spec is the contract.
