@@ -29,6 +29,8 @@ interface CliOptions {
   transport: "stdio" | "http";
   port?: number | undefined;
   publicUrl?: string | undefined;
+  sandbox: boolean;
+  json: boolean;
 }
 
 function printHelp(): void {
@@ -37,17 +39,20 @@ function printHelp(): void {
 Usage: callmcp-server [options]
 
 Options:
+  doctor                validate the journey without starting a server or calling a provider
   --config <path>      path to callmcp.config.json (default: ./callmcp.config.json, or $CALLMCP_CONFIG)
   --transport <mode>   "stdio" (default) or "http"
   --http                shorthand for --transport http
   --port <n>            HTTP port (default: 8787, or callmcp.config.json's http.port)
   --public-url <url>    base URL this server is reachable at, for out-of-band approval links
+  --sandbox              run the explicit in-memory sandbox (never contacts a provider)
+  --json                 emit doctor output as JSON
   -h, --help             show this help
 `);
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = { transport: "stdio" };
+  const opts: CliOptions = { transport: "stdio", sandbox: false, json: false };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -72,6 +77,12 @@ function parseArgs(argv: string[]): CliOptions {
       case "--public-url":
         opts.publicUrl = argv[++i];
         break;
+      case "--sandbox":
+        opts.sandbox = true;
+        break;
+      case "--json":
+        opts.json = true;
+        break;
       case "-h":
       case "--help":
         printHelp();
@@ -87,12 +98,71 @@ function parseArgs(argv: string[]): CliOptions {
   return opts;
 }
 
+function hasCredential(entry: { credentials?: Record<string, unknown> | undefined }): boolean {
+  return Object.values(entry.credentials ?? {}).some((value) => typeof value === "string" && value.length > 0);
+}
+
+async function doctor(opts: CliOptions): Promise<void> {
+  const config = opts.sandbox
+    ? { drivers: [{ id: "mock", type: "mock", default: true }] }
+    : await resolveConfig({ ...(opts.configPath ? { configPath: opts.configPath } : {}) });
+  const drivers = config.drivers.map((entry) => ({
+    id: entry.id,
+    type: entry.type,
+    default: Boolean(entry.default),
+    credential_configured: hasCredential(entry),
+    mode: entry.type === "mock" ? "sandbox" : "provider",
+  }));
+  const defaultDriver = drivers.find((entry) => entry.default) ?? drivers[0];
+  const checks = [
+    { name: "driver_configured", ok: Boolean(defaultDriver) },
+    { name: "explicit_sandbox_or_provider", ok: Boolean(defaultDriver?.type) },
+    { name: "provider_credential_configured", ok: Boolean(defaultDriver?.type === "mock" || defaultDriver?.credential_configured) },
+  ];
+  const result = {
+    command: "callmcp doctor",
+    read_only: true,
+    no_provider_calls: true,
+    live_activation_performed: false,
+    default_driver: defaultDriver?.id ?? null,
+    mode: defaultDriver?.mode ?? "unconfigured",
+    drivers,
+    checks,
+    ready_for_activation: checks.every((check) => check.ok) && defaultDriver?.type !== "mock",
+    next_step: defaultDriver?.type === "mock"
+      ? "Sandbox is ready. Configure a managed KaiCalls kc_live_ key before activation."
+      : defaultDriver?.credential_configured
+        ? "Run a provider-side dry verification, then obtain human approval before the first real call."
+        : "Configure provider credentials, then rerun callmcp doctor.",
+  };
+  if (opts.json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(`${result.command} (read-only)\n`);
+  process.stdout.write(`mode: ${result.mode}; default: ${result.default_driver ?? "none"}\n`);
+  for (const check of checks) process.stdout.write(`${check.ok ? "PASS" : "FAIL"} ${check.name}\n`);
+  process.stdout.write(`activation readiness: ${result.ready_for_activation ? "ready to review" : "not ready"}\n`);
+  process.stdout.write(`${result.next_step}\n`);
+  if (drivers.some((entry) => entry.type === "kaicalls")) {
+    process.stdout.write("KaiCalls note: kc_live_ keys hit live infrastructure; CallMCP sandbox is local-only.\n");
+  }
+  if (!checks.every((check) => check.ok)) process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
-  const opts = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const isDoctor = argv[0] === "doctor";
+  const opts = parseArgs(isDoctor ? argv.slice(1) : argv);
+  if (isDoctor) {
+    await doctor(opts);
+    return;
+  }
   const config = await resolveConfig({ ...(opts.configPath ? { configPath: opts.configPath } : {}) });
+  const effectiveConfig = opts.sandbox ? { drivers: [{ id: "mock", type: "mock", default: true }] } : config;
 
   const driverRegistry = new DriverRegistry();
-  await driverRegistry.load(config);
+  await driverRegistry.load(effectiveConfig);
   for (const warning of driverRegistry.warnings) {
     process.stderr.write(`[${SERVER_NAME}] ${warning}\n`);
   }

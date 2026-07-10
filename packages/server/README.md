@@ -29,6 +29,8 @@ or a third-party one) into a spec-conformant MCP server.
 ```bash
 npx @callmcp/server                    # stdio transport, reads ./callmcp.config.json if present
 npx @callmcp/server --http --port 8787 # Streamable HTTP transport
+npx @callmcp/server doctor             # read-only journey preflight
+npx @callmcp/server --sandbox          # explicit local sandbox; never contacts a provider
 ```
 
 ### Config file
@@ -73,10 +75,19 @@ Or `CALLMCP_DRIVERS_JSON` (a JSON array, same shape as the config file's
 
 ### No driver configured
 
-The server still starts — `driverRegistry.ts` falls back to the mock driver
-so `tools/list` always returns something, and a warning is logged to
-stderr. This is deliberate: a misconfigured or not-yet-configured deployment
-should be inspectable, not refuse to boot.
+The server fails closed. It does not silently load the in-memory mock, because
+that can make an unconfigured deployment look production-ready. Use
+`--sandbox` or an explicit `{ "id": "mock", "type": "mock" }` entry for
+local testing, then configure a real provider before activation.
+
+### Managed KaiCalls path
+
+For the shortest hosted path, configure `type: "kaicalls"` with a
+`kc_live_...` API key. KaiCalls' API-first onboarding is `POST
+https://www.kaicalls.com/api/v1/signup`; existing accounts use the managed
+MCP endpoint at `https://www.kaicalls.com/api/mcp`. KaiCalls currently does not
+issue a `kc_test_` sandbox key, so CallMCP's `--sandbox` is intentionally local
+and never substitutes for provider-side activation.
 
 ## Third-party drivers
 

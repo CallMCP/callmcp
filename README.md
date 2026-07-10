@@ -11,6 +11,11 @@ The normative reference is [`SPEC.md`](./SPEC.md). This README is the pitch; the
 npx -y @callmcp/server
 ```
 
+Before connecting a real provider, run `npx -y @callmcp/server doctor`.
+For a safe local walkthrough, run `npx -y @callmcp/server --sandbox`.
+The server fails closed when no driver is configured; the mock driver is only
+available through explicit sandbox configuration.
+
 See [`examples/`](./examples) for ready-to-paste Claude Desktop / Claude Code configs for each of the three legs below.
 
 ---
