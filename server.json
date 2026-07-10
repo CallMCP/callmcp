@@ -1,36 +1,34 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-11-25/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.callmcp/server",
-  "description": "One MCP tool contract for telephony — calls, SMS, recordings, transcripts, and phone-number lifecycle — routed to any call provider (hosted, local, or bring-your-own-key) behind an identical 14-tool schema. See SPEC.md.",
+  "description": "One MCP tool contract for telephony — any call provider, hosted, local, or BYOK.",
   "status": "active",
   "repository": {
-    "url": "https://github.com/callmcp/callmcp",
+    "url": "https://github.com/CallMCP/callmcp",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
-      "registry_type": "npm",
+      "registryType": "npm",
       "identifier": "@callmcp/server",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "transport": {
         "type": "stdio"
       },
-      "runtime_hint": "node",
-      "package_arguments": [],
-      "environment_variables": [
+      "runtimeHint": "node",
+      "environmentVariables": [
         {
           "name": "CALLMCP_CONFIG",
           "description": "Path to a callmcp.config.json file. Omit to configure entirely via env vars.",
-          "is_required": false
+          "isRequired": false
         },
         {
           "name": "CALLMCP_DEFAULT_DRIVER",
           "description": "driver_id routed to when a tool call omits `driver` (e.g. kaicalls, dograh, twilio_openai).",
-          "is_required": false
+          "isRequired": false
         }
       ]
     }
-  ],
-  "_callmcp_notice": "SCAFFOLD ONLY — pending DNS claim of ai.callmcp/* or com.kaicalls/*. Do NOT run `mcp-publisher publish` against this file until one of those namespaces is claimed and verified; the `name` field above is provisional and will change once a namespace is secured."
+  ]
 }
