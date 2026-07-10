@@ -1,0 +1,84 @@
+{
+  "spec_version": "0.1.0",
+  "driver_id": "twilio_openai",
+  "display_name": "BYOK: Twilio + OpenAI Realtime",
+  "kind": "byok",
+  "repository_url": "https://github.com/callmcp/callmcp",
+  "tools": {
+    "list_drivers": { "supported": true, "notes": "server-core; not implemented by this package" },
+    "request_call_approval": { "supported": true, "notes": "server-core; not implemented by this package" },
+    "list_approvals": { "supported": true, "notes": "server-core; not implemented by this package" },
+    "make_call": {
+      "supported": true,
+      "notes": "Twilio Voice REST call creation + TwiML <Connect><Stream> into the OpenAI Realtime bridge."
+    },
+    "end_call": {
+      "supported": true,
+      "notes": "Twilio calls(sid).update({status:'completed'}) — a stable REST endpoint, unlike Vapi's call-scoped ephemeral controlUrl (SPEC §7 degradation appendix note on end_call)."
+    },
+    "get_call_status": { "supported": true, "notes": "Twilio calls(sid).fetch()." },
+    "get_transcript": {
+      "supported": true,
+      "notes": "Assembled from the OpenAI Realtime session's transcript events as the bridge streams them (response.audio_transcript.done / conversation.item.input_audio_transcription.completed), not from a Twilio-side transcript endpoint."
+    },
+    "get_recording": {
+      "supported": true,
+      "notes": "Twilio call recording via the Recordings resource; enabled by default on make_call (record=true)."
+    },
+    "send_sms": {
+      "supported": true,
+      "notes": "Real standalone send via Twilio's Programmable Messaging API (not agent-mediated-only) — meets SPEC §1.9's bar for supports_sms:true. Subject to Twilio's own A2P 10DLC registration gate for higher-volume US traffic; see known_degradations."
+    },
+    "search_numbers": { "supported": true, "notes": "Twilio Available Phone Numbers API." },
+    "buy_number": {
+      "supported": true,
+      "notes": "Twilio IncomingPhoneNumbers API. International/certain US number types require a Regulatory Bundle (KYC) before purchase succeeds — surfaced as KYC_REQUIRED, not hidden; see transport/twilio.ts mapTwilioError."
+    },
+    "configure_number": {
+      "supported": true,
+      "notes": "Twilio IncomingPhoneNumbers(sid).update() for voice/SMS webhook URLs."
+    },
+    "list_numbers": { "supported": true, "notes": "Twilio IncomingPhoneNumbers list." },
+    "list_calls": { "supported": true, "notes": "Twilio Calls list." }
+  },
+  "capabilities": {
+    "supports_sms": true,
+    "supports_whatsapp": false,
+    "supports_rcs": false,
+    "supports_recording": true,
+    "supports_hangup": true,
+    "supports_number_purchase": true,
+    "supports_number_configuration": true,
+    "supports_realtime_transcription": true,
+    "supports_elicitation_approval": true,
+    "max_concurrent_calls": null,
+    "regions": ["GLOBAL"]
+  },
+  "known_degradations": [
+    {
+      "tool_or_capability": "supports_whatsapp",
+      "reason": "Twilio's WhatsApp Business API requires a separate approved sender/template registration flow not yet wired into this driver. send_sms with channel=whatsapp is not implemented.",
+      "upstream_tracking_url": "https://www.twilio.com/docs/whatsapp"
+    },
+    {
+      "tool_or_capability": "supports_rcs",
+      "reason": "Twilio RCS Business Messaging is not wired into this driver's v1.",
+      "upstream_tracking_url": "https://www.twilio.com/docs/rcs"
+    },
+    {
+      "tool_or_capability": "send_sms",
+      "reason": "US A2P 10DLC brand/campaign registration is required for sustained/high-volume SMS traffic and, per Twilio's own vetting FAQ, currently runs 10-15 business days end to end (nominally 'up to 5 business days' but backlog has pushed it out), plus a $15 campaign verification fee. Low-volume/unregistered sends may work initially but are subject to carrier filtering. Voice-only use of this driver is unaffected.",
+      "upstream_tracking_url": "https://help.twilio.com/articles/11587910480155-A2P-10DLC-Campaign-Vetting-FAQ"
+    },
+    {
+      "tool_or_capability": "buy_number",
+      "reason": "International numbers and several US number types require a Twilio Regulatory Bundle (identity and address documentation) before purchase succeeds. This driver surfaces that as KYC_REQUIRED (SPEC §5.5) rather than a generic failure, but cannot skip the underlying verification.",
+      "upstream_tracking_url": "https://www.twilio.com/docs/phone-numbers/regulatory"
+    },
+    {
+      "tool_or_capability": "brain (second adapter)",
+      "reason": "Only the OpenAI Realtime API brain is implemented (openaiRealtimeAdapter in src/brain/adapter.ts). xAI's Grok Voice Agent API is documented as OpenAI-Realtime-wire-compatible, but grokAdapter is a deliberate unimplemented TODO pending verification against a live session — this is not a CallMCP capability flag (brain choice is internal to this one driver_id), flagged here for driver-author visibility.",
+      "upstream_tracking_url": "https://docs.x.ai/developers/model-capabilities/audio/voice-agent"
+    }
+  ]
+}

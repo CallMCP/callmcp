@@ -1,0 +1,93 @@
+{
+  "spec_version": "0.1.0",
+  "driver_id": "dograh",
+  "display_name": "Dograh (self-hosted / local)",
+  "kind": "local",
+  "repository_url": "https://github.com/dograh-hq/dograh",
+  "tools": {
+    "make_call": {
+      "supported": true,
+      "notes": "POST /telephony/initiate-call, scoped to a workflow_id (agent_config_ref)."
+    },
+    "get_call_status": {
+      "supported": true,
+      "notes": "Polls GET /{workflow_id}/runs/{run_id}; Dograh has no push/webhook status feed."
+    },
+    "get_transcript": {
+      "supported": true,
+      "notes": "Baseline (non-realtime) only. Polls GET /{workflow_id}/runs/{run_id} for transcript_url, then fetches that URL. No resources/subscribe-compatible streaming feed exists."
+    },
+    "get_recording": {
+      "supported": true,
+      "notes": "Read from the run's artifacts[] (artifact_type match) on GET /{workflow_id}/runs/{run_id}."
+    },
+    "end_call": {
+      "supported": false,
+      "notes": "Dograh has no external hangup endpoint (SPEC §7). Method intentionally omitted from live discovery, not stubbed as working."
+    },
+    "send_sms": {
+      "supported": false,
+      "notes": "Dograh has no SMS capability at all (SPEC §7)."
+    },
+    "search_numbers": {
+      "supported": false,
+      "notes": "Dograh is strictly BYO-carrier; there is no number marketplace to search."
+    },
+    "buy_number": {
+      "supported": false,
+      "notes": "No purchase endpoint exists anywhere in Dograh's API (SPEC §7) — BYO-carrier only."
+    },
+    "configure_number": {
+      "supported": true,
+      "notes": "PUT /api/v1/workflow/{workflow_id} attaches an already-owned number to a workflow's telephony_config. This is attachment, not purchase."
+    },
+    "list_numbers": {
+      "supported": true,
+      "notes": "Derived from each known workflow's telephony_config.phone_number — not a dedicated numbers API."
+    },
+    "list_calls": {
+      "supported": true,
+      "notes": "Aggregated from GET /{workflow_id}/runs across known workflows."
+    }
+  },
+  "capabilities": {
+    "supports_sms": false,
+    "supports_whatsapp": false,
+    "supports_rcs": false,
+    "supports_recording": true,
+    "supports_hangup": false,
+    "supports_number_purchase": false,
+    "supports_number_configuration": true,
+    "supports_realtime_transcription": false,
+    "supports_elicitation_approval": true,
+    "max_concurrent_calls": null,
+    "regions": ["GLOBAL"]
+  },
+  "known_degradations": [
+    {
+      "tool_or_capability": "end_call",
+      "reason": "Dograh has no external hangup endpoint as of the 2026-07-09 research pass. A live call can only be ended by the underlying carrier/PSTN leg hanging up or by Dograh's own workflow logic — not via any REST surface this driver can call.",
+      "upstream_tracking_url": "https://github.com/dograh-hq/dograh/blob/main/api/routes/telephony.py"
+    },
+    {
+      "tool_or_capability": "send_sms",
+      "reason": "Dograh ships no SMS capability at all as of the 2026-07-09 research pass.",
+      "upstream_tracking_url": "https://github.com/dograh-hq/dograh"
+    },
+    {
+      "tool_or_capability": "buy_number / search_numbers",
+      "reason": "Dograh is strictly BYO-carrier (you bring your own Twilio/Vonage/Vobiz/Cloudonix credentials, or run it against Asterisk ARI for a zero-vendor path). There is no number marketplace or purchase flow in Dograh's API to search against or buy from.",
+      "upstream_tracking_url": "https://github.com/dograh-hq/dograh"
+    },
+    {
+      "tool_or_capability": "supports_realtime_transcription",
+      "reason": "get_transcript is poll-based against GET /{workflow_id}/runs/{run_id}. There is no documented push/streaming transcript feed, so this driver claims baseline (inline/resource_link) transcript support only, never realtime.",
+      "upstream_tracking_url": "https://raw.githubusercontent.com/dograh-hq/dograh/main/api/routes/workflow.py"
+    },
+    {
+      "tool_or_capability": "configure_number / list_numbers (route shape)",
+      "reason": "The exact number-attachment REST surface (PUT /api/v1/workflow/{workflow_id} and its GET/collection counterparts) was not independently source-verified against dograh-hq/dograh's route files at research time. Verify against your own instance's OpenAPI docs (typically served at {DOGRAH_BASE_URL}/docs) before relying on this in production.",
+      "upstream_tracking_url": "https://github.com/dograh-hq/dograh"
+    }
+  ]
+}

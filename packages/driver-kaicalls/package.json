@@ -1,0 +1,38 @@
+{
+  "name": "@callmcp/driver-kaicalls",
+  "version": "0.1.0",
+  "description": "CallMCP hosted driver for KaiCalls (kaicalls.com) — the flagship, fullest-parity driver, mapping the CallMCP Driver contract onto KaiCalls' live 38-tool MCP/REST telephony backend. Normative references: SPEC.md at the repo root and https://callmcp.ai/llms.txt + https://callmcp.ai/skill.md for the live endpoint/tool inventory this driver targets.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "callmcp.manifest.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@callmcp/driver-interface": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

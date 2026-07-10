@@ -1,0 +1,54 @@
+# Smithery deployment config for @callmcp/server.
+#
+# DOCUMENTED FAILURE MODE (do not reintroduce): the TypeScript `configSchema`
+# exported by packages/server's entrypoint MUST be a plain object of Zod
+# property validators —
+#
+#   export const configSchema = {
+#     driver: z.string().optional(),
+#     kaicallsApiKey: z.string().optional(),
+#   }
+#
+# — and MUST NOT be wrapped in `z.object(...)`:
+#
+#   export const configSchema = z.object({ driver: z.string() })  // WRONG
+#
+# Smithery wraps the exported shape in z.object() itself; double-wrapping it
+# here silently breaks config-schema validation on deploy. This has bitten
+# real Smithery MCP servers, hence the callout. The `configSchema.properties`
+# block below is this same plain-property contract expressed as YAML/JSON
+# Schema for Smithery's container runtime path.
+
+runtime: "container"
+
+build:
+  dockerfile: Dockerfile
+  dockerBuildPath: .
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      driver:
+        type: string
+        description: "Default driver_id to route calls to when a tool call omits `driver` (e.g. kaicalls, dograh, twilio_openai)."
+      kaicallsApiKey:
+        type: string
+        description: "API key for the KaiCalls hosted driver. Required only if the kaicalls driver is configured."
+      dograhBaseUrl:
+        type: string
+        description: "Base URL of a locally-reachable Dograh instance. Required only if the dograh driver is configured."
+      twilioAccountSid:
+        type: string
+        description: "Twilio Account SID — transport leg of the BYOK driver."
+      twilioAuthToken:
+        type: string
+        description: "Twilio Auth Token — transport leg of the BYOK driver."
+      llmApiKey:
+        type: string
+        description: "API key for the BYOK driver's frontier-model brain (Anthropic, OpenAI, etc.)."
+    required: []
+  exampleConfig:
+    driver: "kaicalls"
+    kaicallsApiKey: "kc_live_REPLACE_ME"

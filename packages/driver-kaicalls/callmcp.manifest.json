@@ -1,0 +1,82 @@
+{
+  "$comment": "Static SPEC §6.1 capability manifest for @callmcp/driver-kaicalls. This file must stay in sync with src/manifest.ts (KAICALLS_MANIFEST), which is the TypeScript source of truth used at runtime. See src/manifest.ts for the full commentary on why each flag is set the way it is -- every claim here traces to https://callmcp.ai/llms.txt and https://callmcp.ai/skill.md.",
+  "spec_version": "0.1.0",
+  "driver_id": "kaicalls",
+  "display_name": "KaiCalls (hosted)",
+  "kind": "hosted",
+  "repository_url": "https://github.com/callmcp/callmcp",
+  "tools": {
+    "list_drivers": { "supported": true, "notes": "Server-core; not a per-driver capability." },
+    "request_call_approval": { "supported": true, "notes": "Server-core; not a per-driver capability." },
+    "list_approvals": { "supported": true, "notes": "Server-core; not a per-driver capability." },
+    "make_call": { "supported": true, "notes": "Maps to KaiCalls' `make_call` MCP tool (scope calls:write)." },
+    "end_call": {
+      "supported": false,
+      "notes": "No hangup/terminate-call tool appears in KaiCalls' documented 38-tool inventory (llms.txt \"Calls (5)\": make_call, check_call_status, list_recent_calls, get_transcript, get_call_recording). `endCall` is intentionally left unimplemented on KaiCallsDriver (undefined, not a throwing stub) per SPEC §0.1.2's preferred absence signal."
+    },
+    "get_call_status": { "supported": true, "notes": "Maps to `check_call_status` (scope calls:read)." },
+    "get_transcript": {
+      "supported": true,
+      "notes": "Maps to `get_transcript` (scope calls:read). Baseline/non-realtime form only -- see capabilities.supports_realtime_transcription."
+    },
+    "get_recording": { "supported": true, "notes": "Maps to `get_call_recording` (scope calls:read)." },
+    "send_sms": {
+      "supported": true,
+      "notes": "Maps to `send_sms` (scope sms:write). SMS channel only -- see capabilities.supports_whatsapp / supports_rcs."
+    },
+    "search_numbers": { "supported": true, "notes": "Maps to `search_available_numbers` (scope numbers:read)." },
+    "buy_number": { "supported": true, "notes": "Maps to `buy_number` (scope numbers:write)." },
+    "configure_number": {
+      "supported": true,
+      "notes": "Partial support. Only the `agent_config_ref` field is honestly implementable, via KaiCalls' `attach_number`/`detach_number` tools (scope numbers:write). `sms_webhook_url` and `caller_id_name` are not exposed per-number by any tool in the documented inventory; KaiCallsDriver.configureNumber throws UnsupportedCapabilityError if either is supplied rather than silently dropping them."
+    },
+    "list_numbers": { "supported": true, "notes": "Maps to `list_numbers` (scope numbers:read)." },
+    "list_calls": { "supported": true, "notes": "Maps to `list_recent_calls` (scope calls:read)." }
+  },
+  "capabilities": {
+    "supports_sms": true,
+    "supports_whatsapp": false,
+    "supports_rcs": false,
+    "supports_recording": true,
+    "supports_hangup": false,
+    "supports_number_purchase": true,
+    "supports_number_configuration": true,
+    "supports_realtime_transcription": false,
+    "supports_elicitation_approval": false,
+    "max_concurrent_calls": null,
+    "regions": ["US"]
+  },
+  "known_degradations": [
+    {
+      "tool_or_capability": "end_call",
+      "reason": "No hangup/terminate-call MCP tool is documented in KaiCalls' 38-tool inventory (callmcp.ai/llms.txt). Cannot be implemented honestly without a confirmed endpoint.",
+      "upstream_tracking_url": "https://callmcp.ai/safety"
+    },
+    {
+      "tool_or_capability": "supports_whatsapp",
+      "reason": "send_sms is documented as a single SMS channel; no WhatsApp send path is mentioned anywhere in the source docs."
+    },
+    {
+      "tool_or_capability": "supports_rcs",
+      "reason": "send_sms is documented as a single SMS channel; no RCS send path is mentioned anywhere in the source docs."
+    },
+    {
+      "tool_or_capability": "supports_realtime_transcription",
+      "reason": "get_transcript is documented as poll/finalize-after-call, not a live `resources/subscribe` stream. No MCP resource-subscription behavior is described for KaiCalls' transcript tool."
+    },
+    {
+      "tool_or_capability": "supports_elicitation_approval",
+      "reason": "llms.txt explicitly lists 'no server-side approval gate in front of make_call/buy_number (annotation-only today)' under 'What's real vs not yet built,' and no `elicitation/create` support is documented anywhere.",
+      "upstream_tracking_url": "https://callmcp.ai/safety"
+    },
+    {
+      "tool_or_capability": "configure_number (sms_webhook_url, caller_id_name fields)",
+      "reason": "Only attach_number/detach_number are documented; neither exposes a per-number SMS webhook or caller-ID-name field. KaiCallsDriver.configureNumber throws UnsupportedCapabilityError for these fields instead of silently ignoring them."
+    },
+    {
+      "tool_or_capability": "field-level response shapes (all tools)",
+      "reason": "llms.txt and skill.md are index/onboarding documents, not full JSON Schemas -- they confirm tool names, scopes, and categories, but not exact input/output field names. This driver defensively parses several plausible field-name aliases per tool (see driver.ts) and should be re-verified against a live `tools/list` / `.well-known/mcp.json` response before production use.",
+      "upstream_tracking_url": "https://callmcp.ai/mcp-server-for-phone-calls"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "callmcp": {
+      "command": "npx",
+      "args": ["-y", "@callmcp/server"],
+      "env": {
+        "CALLMCP_DEFAULT_DRIVER": "dograh",
+        "DOGRAH_BASE_URL": "http://localhost:8081",
+        "DOGRAH_API_KEY": "REPLACE_ME_IF_YOUR_DOGRAH_INSTANCE_REQUIRES_AUTH"
+      }
+    }
+  }
+}

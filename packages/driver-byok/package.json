@@ -1,0 +1,41 @@
+{
+  "name": "@callmcp/driver-byok",
+  "version": "0.1.0",
+  "description": "CallMCP BYOK driver: Twilio transport (calls/numbers/SMS) bridged to a bring-your-own-key realtime brain (OpenAI Realtime API today, Grok Voice Agent API wire-compatible adapter stubbed). driver_id: twilio_openai. Normative reference: SPEC.md at the repo root.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "callmcp.manifest.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@callmcp/driver-interface": "workspace:*",
+    "twilio": "^5.3.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

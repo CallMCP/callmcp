@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "callmcp": {
+      "command": "npx",
+      "args": ["-y", "@callmcp/server"],
+      "env": {
+        "CALLMCP_DEFAULT_DRIVER": "kaicalls",
+        "KAICALLS_API_KEY": "kc_live_REPLACE_ME"
+      }
+    }
+  }
+}
