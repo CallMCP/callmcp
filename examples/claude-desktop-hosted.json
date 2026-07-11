@@ -4,8 +4,8 @@
       "command": "npx",
       "args": ["-y", "@callmcp/server"],
       "env": {
-        "CALLMCP_DEFAULT_DRIVER": "kaicalls",
-        "KAICALLS_API_KEY": "kc_live_REPLACE_ME"
+        "CALLMCP_DRIVER_TYPE": "kaicalls",
+        "CALLMCP_DRIVER_CREDENTIALS": "{\"apiKey\":\"kc_live_REPLACE_ME\"}"
       }
     }
   }

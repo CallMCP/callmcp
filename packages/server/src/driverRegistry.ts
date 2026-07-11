@@ -20,12 +20,9 @@
  *    map 1:1 onto e.g. `KaiCallsDriverConfig` / `DograhDriverOptions` /
  *    `BYOKDriverConfig`.
  *
- * If no driver is configured, or every configured driver fails to load
- * (missing package, bad credentials shape, whatever), the registry falls
- * back to `@callmcp/driver-interface`'s `MockDriver` so the server always
- * has *something* to serve `tools/list` against rather than refusing to
- * start. Load failures are collected in `warnings` rather than thrown, so
- * one bad driver entry doesn't take down a multi-driver deployment.
+ * If no driver is configured, or every configured driver fails to load,
+ * loading fails closed. A mock driver is available only when the config
+ * explicitly names `type: "mock"` (the safe local sandbox).
  */
 
 import type { CapabilityManifest, Driver, DriverInfo, ToolName } from "@callmcp/driver-interface";
@@ -214,11 +211,15 @@ export class DriverRegistry {
     }
 
     if (nextDrivers.size === 0) {
-      const mock = new MockDriver();
-      const manifest = await mock.getManifest();
-      nextDrivers.set(mock.id, { driver: mock, manifest, isDefault: true });
-      defaultId = mock.id;
-      warnings.push("no drivers configured (or all configured drivers failed to load) — falling back to the in-memory mock driver");
+      this.drivers = new Map();
+      this.defaultId = null;
+      this.warnings.length = 0;
+      this.warnings.push(...warnings);
+      throw new Error(
+        warnings.length > 0
+          ? `no usable drivers loaded; refusing to start (explicitly configure type: "mock" for sandbox mode). ${warnings.join("; ")}`
+          : 'no drivers configured; refusing to start (explicitly configure type: "mock" for sandbox mode)',
+      );
     } else if (!defaultId) {
       const [firstId, firstRecord] = nextDrivers.entries().next().value as [string, LoadedDriver];
       nextDrivers.set(firstId, { ...firstRecord, isDefault: true });

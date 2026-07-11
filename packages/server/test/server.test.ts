@@ -311,14 +311,14 @@ describe("DriverRegistry against the real bundled driver packages", () => {
     expect(driver.id).toBe("twilio_openai");
   });
 
-  it("collects a warning (not a throw) and falls back to mock when a driver package's constructor rejects its config", async () => {
+  it("fails closed when a configured driver cannot load", async () => {
     const registry = new DriverRegistry();
     // DograhClient throws when it has no base URL and DOGRAH_BASE_URL isn't set.
     delete process.env.DOGRAH_BASE_URL;
-    await registry.load({ drivers: [{ id: "dograh", type: "dograh" }] });
-
+    await expect(registry.load({ drivers: [{ id: "dograh", type: "dograh" }] })).rejects.toThrow(
+      'explicitly configure type: "mock" for sandbox mode',
+    );
     expect(registry.warnings.some((w) => w.includes("dograh"))).toBe(true);
-    // Falls back to the mock driver rather than leaving the registry empty.
-    expect(registry.get().driver.id).toBe("mock");
+    expect(() => registry.get()).toThrow("no drivers configured");
   });
 });

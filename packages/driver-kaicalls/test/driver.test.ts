@@ -141,16 +141,21 @@ describe("KaiCallsDriver.endCall", () => {
 // ---------------------------------------------------------------------
 
 describe("KaiCallsDriver.makeCall", () => {
-  it("maps to the make_call tool and normalizes the result", async () => {
+  it("maps to the make_call tool and normalizes the result from the real nested `call` shape", async () => {
     const { driver, calls } = makeDriver({
       make_call: (args) => {
-        expect(args).toMatchObject({ to: "+14155551234", agent_id: "agent_123" });
+        expect(args).toEqual({ agent_id: "agent_123", to: "+14155551234" });
         return {
-          call_id: "call_abc",
-          status: "ringing",
-          to: "+14155551234",
-          from: "+14155559999",
-          started_at: "2026-07-09T18:04:00Z",
+          success: true,
+          call: {
+            id: "call_abc",
+            conversation_id: "conv_1",
+            status: "ringing",
+            agent_id: "agent_123",
+            business_id: "biz_1",
+            lead_id: null,
+            to: "+14155551234",
+          },
         };
       },
     });
@@ -165,21 +170,56 @@ describe("KaiCallsDriver.makeCall", () => {
       call_id: "call_abc",
       status: "ringing",
       to: "+14155551234",
-      from: "+14155559999",
       approval_id: "a_test",
-      started_at: "2026-07-09T18:04:00Z",
+      started_at: null,
       driver: "kaicalls",
     });
     expect(calls).toHaveLength(1);
   });
 
-  it("echoes a sentinel approval_id when the caller supplies none", async () => {
+  it("falls back to conversation_id when call.id is null", async () => {
     const { driver } = makeDriver({
-      make_call: () => ({ call_id: "call_1", status: "queued", to: "+14155551234" }),
+      make_call: () => ({ call: { id: null, conversation_id: "conv_only", status: "queued", to: "+14155551234" } }),
     });
 
-    const result = await driver.makeCall({ to: "+14155551234" });
+    const result = await driver.makeCall({ to: "+14155551234", agent_config_ref: "agent_123" });
+    expect(result.call_id).toBe("conv_only");
+  });
+
+  it("echoes a sentinel approval_id when the caller supplies none", async () => {
+    const { driver } = makeDriver({
+      make_call: () => ({ call: { id: "call_1", status: "queued", to: "+14155551234" } }),
+    });
+
+    const result = await driver.makeCall({ to: "+14155551234", agent_config_ref: "agent_123" });
     expect(result.approval_id).toBe("kaicalls_no_native_approval_concept");
+  });
+
+  it("throws a clear DRIVER_ERROR when no agent id is supplied at all", async () => {
+    const { driver } = makeDriver({});
+
+    await expect(driver.makeCall({ to: "+14155551234" })).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(KaiCallsDriverError);
+      const e = err as KaiCallsDriverError;
+      expect(e.code).toBe("DRIVER_ERROR");
+      expect(e.message).toMatch(/agent_id/);
+      return true;
+    });
+  });
+
+  it("accepts an agent id via options.kaicalls.agent_id when agent_config_ref is omitted", async () => {
+    const { driver } = makeDriver({
+      make_call: (args) => {
+        expect(args.agent_id).toBe("agent_from_options");
+        return { call: { id: "call_1", status: "queued", to: "+14155551234" } };
+      },
+    });
+
+    const result = await driver.makeCall({
+      to: "+14155551234",
+      options: { kaicalls: { agent_id: "agent_from_options" } },
+    });
+    expect(result.call_id).toBe("call_1");
   });
 
   it("wraps upstream failures in KaiCallsDriverError (DRIVER_ERROR)", async () => {
@@ -187,7 +227,9 @@ describe("KaiCallsDriver.makeCall", () => {
       make_call: () => ({ __isError: true, payload: { message: "no agent instance available" } }),
     });
 
-    await expect(driver.makeCall({ to: "+14155551234" })).rejects.toSatisfy((err: unknown) => {
+    await expect(
+      driver.makeCall({ to: "+14155551234", agent_config_ref: "agent_123" }),
+    ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(KaiCallsDriverError);
       const e = err as KaiCallsDriverError;
       expect(e.code).toBe("DRIVER_ERROR");
@@ -203,26 +245,31 @@ describe("KaiCallsDriver.makeCall", () => {
 // ---------------------------------------------------------------------
 
 describe("KaiCallsDriver.getCallStatus", () => {
-  it("maps known statuses and preserves the raw string in metadata", async () => {
+  it("maps known statuses from the real nested `call` shape and preserves the raw string in metadata", async () => {
     const { driver } = makeDriver({
       check_call_status: () => ({
-        call_id: "call_abc",
-        status: "completed",
-        to: "+14155551234",
-        from: "+14155559999",
-        duration_seconds: 42,
+        call: {
+          id: "call_abc",
+          status: "completed",
+          duration_seconds: 42,
+          summary: "Booked an appointment",
+          created_at: "2026-07-09T18:00:00Z",
+        },
       }),
     });
 
     const result = await driver.getCallStatus({ call_id: "call_abc" });
     expect(result.status).toBe("completed");
     expect(result.duration_seconds).toBe(42);
+    expect(result.started_at).toBe("2026-07-09T18:00:00Z");
+    expect(result.ended_at).toBeNull();
     expect(result.metadata?.kaicalls_raw_status).toBe("completed");
+    expect(result.metadata?.summary).toBe("Booked an appointment");
   });
 
   it("falls back gracefully on an unrecognized status string", async () => {
     const { driver } = makeDriver({
-      check_call_status: () => ({ call_id: "call_abc", status: "some_future_kaicalls_status" }),
+      check_call_status: () => ({ call: { id: "call_abc", status: "some_future_kaicalls_status" } }),
     });
 
     const result = await driver.getCallStatus({ call_id: "call_abc" });
@@ -232,28 +279,36 @@ describe("KaiCallsDriver.getCallStatus", () => {
 });
 
 describe("KaiCallsDriver.getTranscript", () => {
-  it("parses inline transcript turns defensively", async () => {
+  it("wraps the real flat transcript string as a single system turn", async () => {
     const { driver } = makeDriver({
       get_transcript: () => ({
-        status: "complete",
-        transcript: [
-          { role: "agent", text: "Hello!", at: "2026-07-09T18:00:00Z" },
-          { speaker: "customer", message: "Hi there", timestamp: "2026-07-09T18:00:05Z" },
-        ],
+        transcript_available: true,
+        transcript: "Agent: Hello!\nCaller: Hi there",
+        transcript_truncated: false,
+        transcript_length: 30,
       }),
     });
 
     const result = await driver.getTranscript({ call_id: "call_abc" });
     expect(result.status).toBe("complete");
     expect(result.transcript).toEqual([
-      { role: "agent", text: "Hello!", at: "2026-07-09T18:00:00Z" },
-      { role: "caller", text: "Hi there", at: "2026-07-09T18:00:05Z" },
+      { role: "system", text: "Agent: Hello!\nCaller: Hi there", at: "" },
     ]);
+  });
+
+  it("reports not_available_yet when transcript_available is false", async () => {
+    const { driver } = makeDriver({
+      get_transcript: () => ({ transcript_available: false, transcript: null }),
+    });
+
+    const result = await driver.getTranscript({ call_id: "call_abc" });
+    expect(result.status).toBe("not_available_yet");
+    expect(result.transcript).toBeNull();
   });
 
   it("returns a canonical tel:// resource_link when format=resource_link", async () => {
     const { driver } = makeDriver({
-      get_transcript: () => ({ status: "complete", transcript: [] }),
+      get_transcript: () => ({ transcript_available: true, transcript: "hi" }),
     });
 
     const result = await driver.getTranscript({ call_id: "call_abc", format: "resource_link" });
@@ -262,9 +317,12 @@ describe("KaiCallsDriver.getTranscript", () => {
 });
 
 describe("KaiCallsDriver.getRecording", () => {
-  it("reports ready with a canonical resource_link when a URL is present", async () => {
+  it("reports ready with a canonical resource_link when recording_available and call.recording_url are present", async () => {
     const { driver } = makeDriver({
-      get_call_recording: () => ({ url: "https://cdn.kaicalls.com/rec.mp3", duration_seconds: 90 }),
+      get_call_recording: () => ({
+        recording_available: true,
+        call: { recording_url: "https://cdn.kaicalls.com/rec.mp3", duration_seconds: 90 },
+      }),
     });
 
     const result = await driver.getRecording({ call_id: "call_abc" });
@@ -273,8 +331,10 @@ describe("KaiCallsDriver.getRecording", () => {
     expect(result.duration_seconds).toBe(90);
   });
 
-  it("reports not_available when nothing is present", async () => {
-    const { driver } = makeDriver({ get_call_recording: () => ({}) });
+  it("reports not_available when recording_available is false", async () => {
+    const { driver } = makeDriver({
+      get_call_recording: () => ({ recording_available: false, call: {} }),
+    });
     const result = await driver.getRecording({ call_id: "call_abc" });
     expect(result.status).toBe("not_available");
   });
@@ -285,16 +345,34 @@ describe("KaiCallsDriver.getRecording", () => {
 // ---------------------------------------------------------------------
 
 describe("KaiCallsDriver.sendSms", () => {
-  it("sends over the sms channel", async () => {
+  it("sends the real from_agent_id/to/message shape, resolving agent id from options.kaicalls", async () => {
     const { driver } = makeDriver({
       send_sms: (args) => {
-        expect(args).toMatchObject({ to: "+14155551234", body: "hi" });
-        return { message_id: "msg_1", status: "sent", to: "+14155551234", from: "+14155559999" };
+        expect(args).toEqual({ from_agent_id: "agent_123", to: "+14155551234", message: "hi" });
+        // Confirmed live: send_sms's outputSchema has no `status` field at
+        // all (just success/error/message_sid/to/from) — the driver's
+        // "queued" default for a missing status is therefore the accurate,
+        // honest behavior against this backend, not a fallback edge case.
+        return { success: true, message_sid: "SM_1", to: "+14155551234", from: "+14155559999" };
       },
     });
 
-    const result = await driver.sendSms({ to: "+14155551234", body: "hi" });
-    expect(result).toMatchObject({ message_id: "msg_1", status: "sent", channel: "sms" });
+    const result = await driver.sendSms({
+      to: "+14155551234",
+      body: "hi",
+      options: { kaicalls: { agent_id: "agent_123" } },
+    });
+    expect(result).toMatchObject({ message_id: "SM_1", status: "queued", channel: "sms" });
+  });
+
+  it("throws a clear DRIVER_ERROR when no agent id is supplied", async () => {
+    const { driver } = makeDriver({});
+
+    await expect(driver.sendSms!({ to: "+14155551234", body: "hi" })).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(KaiCallsDriverError);
+      expect((err as KaiCallsDriverError).message).toMatch(/agent_id/);
+      return true;
+    });
   });
 
   it("rejects whatsapp/rcs channels honestly as UnsupportedCapabilityError", async () => {
@@ -314,10 +392,11 @@ describe("KaiCallsDriver.sendSms", () => {
 // ---------------------------------------------------------------------
 
 describe("KaiCallsDriver number tools", () => {
-  it("searchNumbers maps results with a sane capability default", async () => {
+  it("searchNumbers maps the real flat string array with a sane capability default", async () => {
     const { driver } = makeDriver({
       search_available_numbers: () => ({
-        numbers: [{ number: "+15550100000", monthly_price_usd: 1.15 }],
+        success: true,
+        available_numbers: ["+15550100000"],
       }),
     });
 
@@ -327,28 +406,42 @@ describe("KaiCallsDriver number tools", () => {
         number: "+15550100000",
         country: "US",
         capabilities: ["voice", "sms"],
-        monthly_price_usd: 1.15,
+        monthly_price_usd: null,
         setup_price_usd: null,
       },
     ]);
   });
 
-  it("buyNumber defaults to active status absent an explicit field", async () => {
+  it("buyNumber sends phone_number and parses the nested number object", async () => {
     const { driver } = makeDriver({
       buy_number: (args) => {
-        expect(args.number).toBe("+15550100000");
-        return { number: "+15550100000" };
+        expect(args).toEqual({ phone_number: "+15550100000" });
+        return { success: true, number: { phone_number: "+15550100000" } };
       },
     });
 
     const result = await driver.buyNumber!({ number: "+15550100000" });
     expect(result.status).toBe("active");
+    expect(result.number).toBe("+15550100000");
   });
 
-  it("configureNumber attaches via agent_config_ref", async () => {
+  it("buyNumber surfaces a high_risk_category compliance flag as compliance_required", async () => {
+    const { driver } = makeDriver({
+      buy_number: () => ({
+        success: true,
+        number: { phone_number: "+15550100000" },
+        compliance: { high_risk_category: true, disclosure_note: "requires 10DLC registration" },
+      }),
+    });
+
+    const result = await driver.buyNumber!({ number: "+15550100000" });
+    expect(result.compliance_required).toEqual(["requires 10DLC registration"]);
+  });
+
+  it("configureNumber attaches via agent_config_ref using phone_number", async () => {
     const { driver, calls } = makeDriver({
       attach_number: (args) => {
-        expect(args).toEqual({ number: "+15550100000", agent_id: "agent_123" });
+        expect(args).toEqual({ phone_number: "+15550100000", agent_id: "agent_123" });
         return {};
       },
     });
@@ -358,10 +451,10 @@ describe("KaiCallsDriver number tools", () => {
     expect(calls[0]?.tool).toBe("attach_number");
   });
 
-  it("configureNumber detaches when agent_config_ref is explicitly null", async () => {
+  it("configureNumber detaches using phone_number when agent_config_ref is explicitly null", async () => {
     const { driver, calls } = makeDriver({
       detach_number: (args) => {
-        expect(args).toEqual({ number: "+15550100000" });
+        expect(args).toEqual({ phone_number: "+15550100000" });
         return {};
       },
     });
