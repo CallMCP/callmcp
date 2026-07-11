@@ -1,23 +1,24 @@
 # Smithery deployment config for @callmcp/server.
 #
-# DOCUMENTED FAILURE MODE (do not reintroduce): the TypeScript `configSchema`
-# exported by packages/server's entrypoint MUST be a plain object of Zod
-# property validators —
+# This uses Smithery's CONTAINER runtime (see `runtime: "container"` below),
+# not its TypeScript/HTTP runtime — the two have different config-wiring
+# contracts. For the container runtime, `configSchema` alone does nothing:
+# Smithery has no way to know how to turn a resolved config object into an
+# actual process invocation unless `commandFunction` is also present. A
+# `configSchema` with no `commandFunction` (the state this file was in
+# before) validates user input but silently never wires any of it to the
+# running container — every field in `exampleConfig` would be accepted and
+# then discarded.
 #
-#   export const configSchema = {
-#     driver: z.string().optional(),
-#     kaicallsApiKey: z.string().optional(),
-#   }
-#
-# — and MUST NOT be wrapped in `z.object(...)`:
-#
-#   export const configSchema = z.object({ driver: z.string() })  // WRONG
-#
-# Smithery wraps the exported shape in z.object() itself; double-wrapping it
-# here silently breaks config-schema validation on deploy. This has bitten
-# real Smithery MCP servers, hence the callout. The `configSchema.properties`
-# block below is this same plain-property contract expressed as YAML/JSON
-# Schema for Smithery's container runtime path.
+# `commandFunction` is a JS arrow function, inlined as a YAML block scalar,
+# of the form `(config) => ({ command, args, env })` — Smithery calls it
+# with the user's resolved config and uses the returned command/args/env to
+# launch the container's process. This driver maps each Smithery-facing
+# config field onto the actual env vars @callmcp/server's config loader
+# reads (`CALLMCP_DRIVER_TYPE`, `CALLMCP_DRIVER_CREDENTIALS` as a JSON
+# string, `CALLMCP_DRIVER_ID`, and driver-specific env vars for Dograh) —
+# see packages/server/src/config.ts and examples/*.json for the same
+# mapping used by the non-Smithery install paths.
 
 runtime: "container"
 
@@ -32,23 +33,65 @@ startCommand:
     properties:
       driver:
         type: string
-        description: "Default driver_id to route calls to when a tool call omits `driver` (e.g. kaicalls, dograh, twilio_openai)."
+        enum: ["kaicalls", "dograh", "byok"]
+        description: "Which CallMCP driver to activate: kaicalls (hosted), dograh (self-hosted/local), or byok (Twilio + OpenAI Realtime)."
       kaicallsApiKey:
         type: string
-        description: "API key for the KaiCalls hosted driver. Required only if the kaicalls driver is configured."
+        description: "kc_live_... API key for the KaiCalls hosted driver. Required only when driver=kaicalls."
       dograhBaseUrl:
         type: string
-        description: "Base URL of a locally-reachable Dograh instance. Required only if the dograh driver is configured."
+        description: "Base URL of a reachable Dograh instance. Required only when driver=dograh."
+      dograhApiKey:
+        type: string
+        description: "API key for the Dograh instance, if it requires auth. Optional, driver=dograh only."
+      dograhDefaultWorkflowId:
+        type: string
+        description: "Default Dograh workflow_id used when a call omits agent_config_ref. Required only when driver=dograh."
       twilioAccountSid:
         type: string
-        description: "Twilio Account SID — transport leg of the BYOK driver."
+        description: "Twilio Account SID — transport leg of the BYOK driver. Required only when driver=byok."
       twilioAuthToken:
         type: string
-        description: "Twilio Auth Token — transport leg of the BYOK driver."
+        description: "Twilio Auth Token — transport leg of the BYOK driver. Required only when driver=byok."
+      twilioFromNumber:
+        type: string
+        description: "Default Twilio caller-ID number for outbound calls. Optional, driver=byok only."
       llmApiKey:
         type: string
-        description: "API key for the BYOK driver's frontier-model brain (Anthropic, OpenAI, etc.)."
-    required: []
+        description: "OpenAI API key for the BYOK driver's realtime voice brain. Required only when driver=byok."
+      voiceWebhookUrl:
+        type: string
+        description: "Public https:// URL this deployment's Twilio voice webhook is reachable at — Twilio must be able to reach it. Required only when driver=byok."
+      mediaStreamUrl:
+        type: string
+        description: "Public wss:// URL this deployment's Twilio media-stream WebSocket is reachable at. Required only when driver=byok."
+    required:
+      - driver
   exampleConfig:
     driver: "kaicalls"
     kaicallsApiKey: "kc_live_REPLACE_ME"
+  commandFunction: |-
+    (config) => {
+      const env = {};
+      if (config.driver === "kaicalls") {
+        env.CALLMCP_DRIVER_TYPE = "kaicalls";
+        env.CALLMCP_DRIVER_CREDENTIALS = JSON.stringify({ apiKey: config.kaicallsApiKey });
+      } else if (config.driver === "dograh") {
+        env.CALLMCP_DRIVER_TYPE = "dograh";
+        if (config.dograhBaseUrl) env.DOGRAH_BASE_URL = config.dograhBaseUrl;
+        if (config.dograhApiKey) env.DOGRAH_API_KEY = config.dograhApiKey;
+        if (config.dograhDefaultWorkflowId) env.DOGRAH_DEFAULT_WORKFLOW_ID = config.dograhDefaultWorkflowId;
+      } else if (config.driver === "byok") {
+        env.CALLMCP_DRIVER_TYPE = "byok";
+        env.CALLMCP_DRIVER_ID = "twilio_openai";
+        env.CALLMCP_DRIVER_CREDENTIALS = JSON.stringify({
+          twilioAccountSid: config.twilioAccountSid,
+          twilioAuthToken: config.twilioAuthToken,
+          twilioFromNumber: config.twilioFromNumber,
+          openaiApiKey: config.llmApiKey,
+          voiceWebhookUrl: config.voiceWebhookUrl,
+          mediaStreamUrl: config.mediaStreamUrl,
+        });
+      }
+      return { command: "node", args: ["packages/server/dist/index.js"], env: { ...process.env, ...env } };
+    }

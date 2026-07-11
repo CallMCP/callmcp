@@ -4,12 +4,9 @@
       "command": "npx",
       "args": ["-y", "@callmcp/server"],
       "env": {
-        "CALLMCP_DEFAULT_DRIVER": "twilio_openai",
-        "TWILIO_ACCOUNT_SID": "AC_REPLACE_ME",
-        "TWILIO_AUTH_TOKEN": "REPLACE_ME",
-        "TWILIO_FROM_NUMBER": "+15555550123",
-        "OPENAI_API_KEY": "sk-REPLACE_ME",
-        "ANTHROPIC_API_KEY": "sk-ant-REPLACE_ME_OPTIONAL_USE_CLAUDE_AS_THE_CALL_BRAIN_INSTEAD"
+        "CALLMCP_DRIVER_TYPE": "byok",
+        "CALLMCP_DRIVER_ID": "twilio_openai",
+        "CALLMCP_DRIVER_CREDENTIALS": "{\"twilioAccountSid\":\"AC_REPLACE_ME\",\"twilioAuthToken\":\"REPLACE_ME\",\"twilioFromNumber\":\"+15555550123\",\"openaiApiKey\":\"sk-REPLACE_ME\",\"voiceWebhookUrl\":\"https://your-public-host.example.com/twilio/voice\",\"mediaStreamUrl\":\"wss://your-public-host.example.com/twilio/media-stream\"}"
       }
     }
   }

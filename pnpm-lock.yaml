@@ -89,7 +89,7 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
-    devDependencies:
+    optionalDependencies:
       '@callmcp/driver-byok':
         specifier: workspace:*
         version: link:../driver-byok
@@ -99,6 +99,7 @@ importers:
       '@callmcp/driver-kaicalls':
         specifier: workspace:*
         version: link:../driver-kaicalls
+    devDependencies:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.1

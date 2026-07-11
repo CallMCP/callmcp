@@ -42,7 +42,7 @@ export const KAICALLS_MANIFEST: CapabilityManifest = {
     end_call: {
       supported: false,
       notes:
-        'No hangup/terminate-call tool appears in KaiCalls\' documented 38-tool inventory (llms.txt "Calls (5)": make_call, check_call_status, list_recent_calls, get_transcript, get_call_recording — no sixth call-control tool). `endCall` is intentionally left unimplemented on KaiCallsDriver (undefined, not a throwing stub) per SPEC §0.1.2\'s preferred absence signal.',
+        'No hangup/terminate-call tool appears in KaiCalls\' documented 44-tool inventory (confirmed live via an unauthenticated tools/list call against callmcp.ai/mcp on 2026-07-10 — the llms.txt/skill.md "38"/"42" tool-count figures are stale) (llms.txt "Calls (5)": make_call, check_call_status, list_recent_calls, get_transcript, get_call_recording — no sixth call-control tool). `endCall` is intentionally left unimplemented on KaiCallsDriver (undefined, not a throwing stub) per SPEC §0.1.2\'s preferred absence signal.',
     },
     get_call_status: { supported: true, notes: "Maps to `check_call_status` (scope calls:read)." },
     get_transcript: {
@@ -72,7 +72,7 @@ export const KAICALLS_MANIFEST: CapabilityManifest = {
     // earns `true` per SPEC §7's bar for supports_sms.
     supports_sms: true,
     // Neither llms.txt nor skill.md mentions a WhatsApp channel anywhere in
-    // the 38-tool inventory or the send_sms description.
+    // the 44-tool inventory (confirmed live via an unauthenticated tools/list call against callmcp.ai/mcp on 2026-07-10 — the llms.txt/skill.md "38"/"42" tool-count figures are stale) or the send_sms description.
     supports_whatsapp: false,
     // Same — no RCS channel documented anywhere.
     supports_rcs: false,
@@ -120,7 +120,7 @@ export const KAICALLS_MANIFEST: CapabilityManifest = {
     {
       tool_or_capability: "end_call",
       reason:
-        "No hangup/terminate-call MCP tool is documented in KaiCalls' 38-tool inventory (callmcp.ai/llms.txt). Cannot be implemented honestly without a confirmed endpoint.",
+        "No hangup/terminate-call MCP tool is documented in KaiCalls' 44-tool inventory (confirmed live via an unauthenticated tools/list call against callmcp.ai/mcp on 2026-07-10 — the llms.txt/skill.md '38'/'42' tool-count figures are stale) (callmcp.ai/llms.txt). Cannot be implemented honestly without a confirmed endpoint.",
       upstream_tracking_url: "https://callmcp.ai/safety",
     },
     {
@@ -148,9 +148,9 @@ export const KAICALLS_MANIFEST: CapabilityManifest = {
         "Only attach_number/detach_number are documented; neither exposes a per-number SMS webhook or caller-ID-name field. KaiCallsDriver.configureNumber throws UnsupportedCapabilityError for these fields instead of silently ignoring them.",
     },
     {
-      tool_or_capability: "field-level response shapes (all tools)",
+      tool_or_capability: "buy_number / list_numbers nested object sub-shape",
       reason:
-        "llms.txt and skill.md are index/onboarding documents, not full JSON Schemas — they confirm tool names, scopes, and categories, but not exact input/output field names. This driver defensively parses several plausible field-name aliases per tool (see driver.ts) and should be re-verified against a live `tools/list` / `.well-known/mcp.json` response before production use.",
+        "Confirmed live (2026-07-10, unauthenticated tools/list against callmcp.ai/mcp) for every other tool's field names and nesting — driver.ts was corrected to match. The one remaining gap: buy_number's response `number` field and list_numbers' `numbers[]` entries are typed only as `{\"type\":\"object\"}` in the published outputSchema, with no listed sub-properties, so this driver still defensively guesses at candidate key names (`phone_number`/`number`/`e164`) for those two nested shapes rather than a confirmed field name.",
       upstream_tracking_url: "https://callmcp.ai/mcp-server-for-phone-calls",
     },
   ],

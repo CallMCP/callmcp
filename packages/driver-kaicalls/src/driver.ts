@@ -1,11 +1,9 @@
 /**
  * KaiCallsDriver — maps the CallMCP `Driver` contract (SPEC.md, every
  * method typed in `@callmcp/driver-interface`) onto KaiCalls' real,
- * production 38-tool MCP backend, as documented in
- * https://callmcp.ai/llms.txt and https://callmcp.ai/skill.md.
+ * production 44-tool MCP backend at https://callmcp.ai/mcp.
  *
- * Tool mapping (every one of these tool NAMES is directly confirmed by
- * llms.txt's tool inventory — nothing here is guessed):
+ * Tool mapping:
  *
  *   Driver method      KaiCalls MCP tool         Scope
  *   ------------------  -------------------------  --------------
@@ -21,27 +19,22 @@
  *   listCalls           list_recent_calls           calls:read
  *   endCall             (none — see manifest.ts)    n/a
  *
- * What is NOT confirmed by the source docs, and how this file handles it:
- * llms.txt/skill.md are index/onboarding documents. They enumerate tool
- * names, scopes, and categories precisely, but explicitly defer full JSON
- * Schemas to a live `tools/list` call or `.well-known/mcp.json` ("call
- * tools/list ... for the full JSON Schema of every tool"). This file does
- * NOT invent a confident schema for request/response field names. Instead:
- *   - Outbound `arguments` objects use the most natural field names implied
- *     by each tool's own name and by CallMCP SPEC's own parameter
- *     vocabulary (this backend IS the reference implementation the SPEC
- *     was modeled on — SPEC §5.6's own worked example cites
- *     `"driver": "kaicalls"` and a Vapi-flavored native error code).
- *   - Inbound results are parsed defensively via `firstDefined(...)` over
- *     several plausible key aliases (e.g. `call_id` vs `id`), so a
- *     reasonable field-naming mismatch degrades gracefully instead of
- *     throwing.
- *   - Anywhere this driver had to pick a specific behavior with no
- *     documentary basis (default statuses, fallback capabilities, etc.),
- *     there's a comment saying so at the point of the guess.
- * Field-level behavior here should be re-verified against a live
- * `tools/list` response before production use — see
- * `manifest.ts`'s `known_degradations` entry for this exact caveat.
+ * Field-level request/response shapes below are confirmed live (2026-07-10)
+ * against an unauthenticated `tools/list` call to https://callmcp.ai/mcp —
+ * not guessed from llms.txt/skill.md, which only confirm tool names/scopes,
+ * not exact field names. That earlier guesswork was wrong in several places
+ * this pass corrected: make_call/check_call_status/get_call_recording all
+ * nest their real payload under a `call` object, not top-level; send_sms's
+ * real fields are `from_agent_id`/`to`/`message` (not `from`/`body`);
+ * buy_number/attach_number/detach_number all key on `phone_number`, not
+ * `number`; get_transcript returns a flat string gated by
+ * `transcript_available`, not a turn-by-turn array; and
+ * search_available_numbers returns bare E.164 strings, not objects. Each
+ * fix is called out inline at its call site. The only remaining
+ * defensively-guessed shapes are buy_number's nested `number` object and
+ * list_numbers' entry objects, whose sub-fields aren't in the published
+ * schema at all (typed only as `object`) — see `manifest.ts`'s
+ * `known_degradations` entry for that specific residual gap.
  */
 
 import type {
@@ -71,13 +64,11 @@ import type {
   MakeCallStatus,
   MessageStatus,
   OwnedNumber,
-  RecordingStatus,
   SearchNumbersParams,
   SearchNumbersResult,
   SendSmsParams,
   SendSmsResult,
   TranscriptStatus,
-  TranscriptTurn,
 } from "@callmcp/driver-interface";
 import { UnsupportedCapabilityError } from "@callmcp/driver-interface";
 import { KaiCallsApiError, KaiCallsClient, type KaiCallsClientConfig } from "./client.js";
@@ -145,31 +136,47 @@ export class KaiCallsDriver implements Driver {
   // -------------------------------------------------------------------
 
   async makeCall(params: MakeCallParams): Promise<MakeCallResult> {
+    // Confirmed live (2026-07-10, unauthenticated tools/list against
+    // https://callmcp.ai/mcp): make_call's real inputSchema requires
+    // `agent_id` + `to`, and has NO `from` / `max_duration_seconds` /
+    // `metadata` fields — CallMCP's generic contract has no field that maps
+    // to a KaiCalls agent id other than `agent_config_ref`, so that's the
+    // only source; `options.kaicalls.*` reaches the real KaiCalls-only
+    // fields (`name`/`context`/`first_message`/`lead_id`) the generic
+    // contract has no equivalent for.
+    const agentId = params.agent_config_ref ?? str(params.options?.kaicalls?.["agent_id"]);
+    if (!agentId) {
+      throw this.missingAgentId("make_call");
+    }
+
     const args = compact({
+      agent_id: agentId,
       to: params.to,
-      from: params.from,
-      agent_id: params.agent_config_ref,
-      max_duration_seconds: params.max_duration_seconds,
-      metadata: params.metadata,
+      name: str(params.options?.kaicalls?.["name"]),
+      context: str(params.options?.kaicalls?.["context"]),
+      first_message: str(params.options?.kaicalls?.["first_message"]),
+      lead_id: str(params.options?.kaicalls?.["lead_id"]),
     });
     const raw = asRecord(await this.invoke("make_call", args, "calls:write"));
+    // Confirmed live: the whole result is nested under `call`, not top-level.
+    const call = asRecord(raw.call);
 
-    const call_id = str(firstDefined(raw.call_id, raw.id));
+    const call_id = str(firstDefined(call.id, call.conversation_id));
     if (!call_id) {
       throw this.malformed("make_call", raw);
     }
 
     return {
       call_id,
-      status: mapMakeCallStatus(str(firstDefined(raw.status, raw.call_status))),
-      to: str(raw.to) ?? params.to,
-      ...compact({ from: str(firstDefined(raw.from, params.from)) }),
+      status: mapMakeCallStatus(str(call.status)),
+      to: str(call.to) ?? params.to,
       // KaiCalls has no native concept of a CallMCP approval_id (approval
       // gating is server-core per SPEC §3, enforced upstream of this
       // driver) — echo back whatever the caller supplied, or a sentinel
       // making the absence explicit, mirroring MockDriver's convention.
       approval_id: params.approval_id ?? "kaicalls_no_native_approval_concept",
-      started_at: str(firstDefined(raw.started_at, raw.created_at)) ?? null,
+      // Confirmed live: make_call's output has no timestamp field at all.
+      started_at: null,
       driver: this.id,
     };
   }
@@ -182,33 +189,40 @@ export class KaiCallsDriver implements Driver {
 
   async getCallStatus(params: GetCallStatusParams): Promise<GetCallStatusResult> {
     const raw = asRecord(await this.invoke("check_call_status", { call_id: params.call_id }, "calls:read"));
-    const rawStatus = str(firstDefined(raw.status, raw.call_status, raw.state));
-    const rawMetadata = asRecord(raw.metadata);
+    // Confirmed live: result is nested under `call`; no `to`/`from`/`ended_at`
+    // fields exist at all (only `duration_seconds`), and `id` can be null
+    // (fall back to `conversation_id`).
+    const call = asRecord(raw.call);
+    const rawStatus = str(call.status);
 
     return {
-      call_id: str(firstDefined(raw.call_id, raw.id)) ?? params.call_id,
+      call_id: str(firstDefined(call.id, call.conversation_id)) ?? params.call_id,
       status: mapCallLifecycleStatus(rawStatus),
-      ...compact({ to: str(raw.to), from: str(raw.from) }),
-      started_at: str(firstDefined(raw.started_at, raw.created_at)) ?? null,
-      ended_at: str(firstDefined(raw.ended_at, raw.completed_at)) ?? null,
-      duration_seconds: num(firstDefined(raw.duration_seconds, raw.duration)),
+      started_at: str(call.created_at) ?? null,
+      ended_at: null,
+      duration_seconds: num(call.duration_seconds),
       // Preserve the untranslated upstream status string — mapCallLifecycleStatus
-      // has to fold KaiCalls' real vocabulary (unconfirmed by source docs)
-      // into SPEC's closed enum, which is lossy by construction. Callers
-      // who need the raw value can read it back out of metadata.
-      metadata: rawStatus ? { ...rawMetadata, kaicalls_raw_status: rawStatus } : rawMetadata,
+      // has to fold KaiCalls' real vocabulary into SPEC's closed enum, which
+      // is lossy by construction. Callers who need the raw value, plus the
+      // real summary/quality fields with no SPEC-typed home, can read them
+      // back out of metadata.
+      metadata: compact({
+        kaicalls_raw_status: rawStatus,
+        summary: str(call.summary),
+        quality_dimensions: call.quality_dimensions,
+      }),
       driver: this.id,
     };
   }
 
   async getTranscript(params: GetTranscriptParams): Promise<GetTranscriptResult> {
     const raw = asRecord(await this.invoke("get_transcript", { call_id: params.call_id }, "calls:read"));
-    const rawTurns = Array.isArray(raw.transcript)
-      ? raw.transcript
-      : Array.isArray(raw.turns)
-        ? raw.turns
-        : undefined;
-    const status = mapTranscriptStatus(str(firstDefined(raw.status, raw.transcript_status)), rawTurns);
+    // Confirmed live: `transcript` is a flat STRING (not a turn-by-turn
+    // array), gated by a `transcript_available` boolean — there is no
+    // per-speaker structure in this tool's response at all.
+    const available = raw.transcript_available === true;
+    const transcriptText = str(raw.transcript);
+    const status: TranscriptStatus = available && transcriptText ? "complete" : "not_available_yet";
 
     if (params.format === "resource_link") {
       // Canonical CallMCP resource-addressing convention (SPEC §1.7),
@@ -225,29 +239,36 @@ export class KaiCallsDriver implements Driver {
     return {
       call_id: params.call_id,
       status,
-      transcript: rawTurns ? rawTurns.map(mapTranscriptTurn) : null,
+      // SPEC's `transcript` field is typed as turn objects (role/text/at),
+      // but KaiCalls' live tool only ever returns one flat string with no
+      // speaker attribution — fabricating a role/turn split would be
+      // dishonest, so the whole transcript is carried as a single "system"
+      // turn rather than lost or silently reshaped into fake dialogue.
+      transcript: transcriptText ? [{ role: "system", text: transcriptText, at: "" }] : null,
       driver: this.id,
     };
   }
 
   async getRecording(params: GetRecordingParams): Promise<GetRecordingResult> {
     const raw = asRecord(await this.invoke("get_call_recording", { call_id: params.call_id }, "calls:read"));
-    const rawStatus = str(firstDefined(raw.status, raw.recording_status));
-    const hasUrl = Boolean(firstDefined(raw.url, raw.recording_url, raw.audio_url));
+    // Confirmed live: gated by a top-level `recording_available` boolean;
+    // the actual URL and duration are nested under `call`, not top-level —
+    // no `mime_type` field exists anywhere in this tool's response.
+    const call = asRecord(raw.call);
+    const available = raw.recording_available === true && Boolean(call.recording_url);
 
     return {
       call_id: params.call_id,
-      status: rawStatus ? mapRecordingStatus(rawStatus) : hasUrl ? "ready" : "not_available",
+      status: available ? "ready" : "not_available",
       // Canonical CallMCP resource-addressing convention (SPEC §1.8),
       // constructed from `call_id`, mirroring MockDriver. Note: the
-      // *actual* playable KaiCalls recording URL (whatever `url` /
-      // `recording_url` field the live tool returns) is not itself part of
-      // this spec's `GetRecordingResult` shape — resolving `tel://` links
-      // back into real media is a CallMCP server-core concern outside this
-      // driver package's `Driver` surface.
+      // *actual* playable KaiCalls recording URL (`call.recording_url`) is
+      // not itself part of this spec's `GetRecordingResult` shape —
+      // resolving `tel://` links back into real media is a CallMCP
+      // server-core concern outside this driver package's `Driver` surface.
       resource_link: `tel://calls/${params.call_id}/recording`,
-      mime_type: str(firstDefined(raw.mime_type, raw.content_type)) ?? null,
-      duration_seconds: num(firstDefined(raw.duration_seconds, raw.duration)),
+      mime_type: null,
+      duration_seconds: num(call.duration_seconds),
       driver: this.id,
     };
   }
@@ -270,18 +291,26 @@ export class KaiCallsDriver implements Driver {
       );
     }
 
+    // Confirmed live: send_sms requires `from_agent_id` (a KaiCalls agent
+    // id — NOT a phone number), `to`, and `message` (not `from`/`body`).
+    // CallMCP's generic SendSmsParams.from models a caller-id *phone
+    // number*, which has no honest mapping onto a KaiCalls agent id, so
+    // that agent id can only come from the driver-specific
+    // `options.kaicalls.agent_id` extension point.
+    const fromAgentId = str(params.options?.kaicalls?.["agent_id"]);
+    if (!fromAgentId) {
+      throw this.missingAgentId("send_sms");
+    }
+
     const args = compact({
+      from_agent_id: fromAgentId,
       to: params.to,
-      body: params.body,
-      from: params.from,
-      // Passed through opportunistically. KaiCalls' send_sms MMS/media
-      // attachment support is not confirmed anywhere in llms.txt/skill.md;
-      // this is best-effort and the backend may ignore or reject it.
-      media_urls: params.media_urls,
+      message: params.body,
+      lead_id: str(params.options?.kaicalls?.["lead_id"]),
     });
     const raw = asRecord(await this.invoke("send_sms", args, "sms:write"));
 
-    const message_id = str(firstDefined(raw.message_id, raw.id, raw.sms_id));
+    const message_id = str(raw.message_sid);
     if (!message_id) {
       throw this.malformed("send_sms", raw);
     }
@@ -302,40 +331,44 @@ export class KaiCallsDriver implements Driver {
   // -------------------------------------------------------------------
 
   async searchNumbers(params: SearchNumbersParams): Promise<SearchNumbersResult> {
-    const args = compact({
-      country: params.country,
-      area_code: params.area_code,
-      capabilities: params.capabilities_required,
-    });
+    // Confirmed live: no `capabilities` input field exists (search is
+    // area_code/country/limit only); the result is `available_numbers`, a
+    // flat array of plain E.164 STRINGS — no country/price/capability
+    // metadata per number at all, unlike this used to assume.
+    const args = compact({ country: params.country, area_code: params.area_code });
     const raw = asRecord(await this.invoke("search_available_numbers", args, "numbers:read"));
-    const rawNumbers = Array.isArray(raw.numbers)
-      ? raw.numbers
-      : Array.isArray(raw.available_numbers)
-        ? raw.available_numbers
-        : [];
+    const rawNumbers = Array.isArray(raw.available_numbers) ? raw.available_numbers : [];
 
     return {
       numbers: rawNumbers.map((entry) => mapAvailableNumber(entry, params.country)),
-      next_cursor: str(raw.next_cursor) ?? null,
+      next_cursor: null,
       driver: this.id,
     };
   }
 
   async buyNumber(params: BuyNumberParams): Promise<BuyNumberResult> {
-    const args = compact({ number: params.number, compliance: params.compliance });
+    // Confirmed live: the request field is `phone_number`, not `number` —
+    // and the response's `number` field is a nested OBJECT (undocumented
+    // sub-shape), not the string this used to assume; `compliance` is
+    // `{ high_risk_category, disclosure_note }`, not a `compliance_required`
+    // string array. Defensive candidate-key parsing on the nested object
+    // since its exact fields aren't in the published schema.
+    const args = compact({ phone_number: params.number, business_id: str(params.options?.kaicalls?.["business_id"]) });
     const raw = asRecord(await this.invoke("buy_number", args, "numbers:write"));
-    const complianceRequired = Array.isArray(raw.compliance_required)
-      ? raw.compliance_required.filter(isString)
+    const numberObj = asRecord(raw.number);
+    const compliance = asRecord(raw.compliance);
+    const complianceRequired = compliance.high_risk_category === true
+      ? [str(compliance.disclosure_note) ?? "high_risk_category"]
       : undefined;
 
     return {
-      number: str(firstDefined(raw.number, raw.phone_number)) ?? params.number,
+      number: str(firstDefined(numberObj.phone_number, numberObj.number, numberObj.e164)) ?? params.number,
       // No compliance-gating step is described anywhere for KaiCalls' flow
       // (llms.txt's own signup flow provisions "a real phone number... in
       // one round trip", no pending-compliance step mentioned) — default
       // to "active" absent an explicit status field.
       status: mapBuyNumberStatus(str(raw.status)),
-      monthly_price_usd: num(raw.monthly_price_usd),
+      monthly_price_usd: num(firstDefined(numberObj.monthly_price_usd, raw.monthly_price_usd)),
       ...compact({ compliance_required: complianceRequired }),
       driver: this.id,
     };
@@ -349,12 +382,14 @@ export class KaiCallsDriver implements Driver {
       throw new UnsupportedCapabilityError(this.id, "configure_number", "caller_id_name");
     }
 
+    // Confirmed live: both attach_number and detach_number take
+    // `phone_number`, not `number`.
     if (params.agent_config_ref === null) {
-      await this.invoke("detach_number", { number: params.number }, "numbers:write");
+      await this.invoke("detach_number", { phone_number: params.number }, "numbers:write");
     } else if (params.agent_config_ref !== undefined) {
       await this.invoke(
         "attach_number",
-        { number: params.number, agent_id: params.agent_config_ref },
+        { phone_number: params.number, agent_id: params.agent_config_ref },
         "numbers:write",
       );
     }
@@ -417,6 +452,23 @@ export class KaiCallsDriver implements Driver {
     return new KaiCallsDriverError(
       tool,
       new KaiCallsApiError(`response was missing an identifying id field`, { toolErrorPayload: raw }),
+    );
+  }
+
+  /**
+   * KaiCalls' live make_call/send_sms both require a KaiCalls-native
+   * `agent_id`, which CallMCP's generic contract has no field for beyond
+   * `agent_config_ref` (make_call only). Rather than silently omitting a
+   * required field and letting the live API return an opaque validation
+   * error, this driver fails with a clear, specific message pointing at the
+   * one honest way to supply it: `agent_config_ref` or `options.kaicalls.agent_id`.
+   */
+  private missingAgentId(tool: string): never {
+    throw new KaiCallsDriverError(
+      tool,
+      new KaiCallsApiError(
+        `KaiCalls requires an agent_id for "${tool}"; supply it via agent_config_ref (make_call) or options.kaicalls.agent_id`,
+      ),
     );
   }
 }
@@ -545,22 +597,6 @@ function mapMessageStatus(raw: string | undefined): MessageStatus {
   }
 }
 
-function mapRecordingStatus(raw: string): RecordingStatus {
-  switch (raw.toLowerCase()) {
-    case "ready":
-    case "available":
-    case "complete":
-    case "completed":
-      return "ready";
-    case "processing":
-    case "pending":
-      return "processing";
-    case "not_available":
-    default:
-      return "not_available";
-  }
-}
-
 function mapBuyNumberStatus(raw: string | undefined): BuyNumberStatus {
   switch ((raw ?? "").toLowerCase()) {
     case "pending_compliance":
@@ -573,56 +609,35 @@ function mapBuyNumberStatus(raw: string | undefined): BuyNumberStatus {
   }
 }
 
-function mapTranscriptStatus(raw: string | undefined, rawTurns: unknown[] | undefined): TranscriptStatus {
-  switch ((raw ?? "").toLowerCase()) {
-    case "complete":
-    case "completed":
-    case "final":
-      return "complete";
-    case "partial":
-    case "in_progress":
-    case "pending":
-      return "partial";
-    case "not_available_yet":
-    case "not_available":
-      return "not_available_yet";
-    default:
-      // No explicit status field returned. llms.txt: "Transcripts finalize
-      // shortly after the call ends" — treat a non-empty turn list as
-      // complete and an empty/absent one as not yet available. This is an
-      // inference, not a confirmed rule.
-      return rawTurns && rawTurns.length > 0 ? "complete" : "not_available_yet";
-  }
-}
+// mapTranscriptStatus/mapTranscriptTurn/mapTranscriptRole removed: KaiCalls'
+// live get_transcript returns a flat string plus a `transcript_available`
+// boolean, not a turn-by-turn array — see getTranscript() above, which now
+// derives status directly from that boolean instead of inferring it from
+// turn-array contents.
 
-function mapTranscriptTurn(entry: unknown): TranscriptTurn {
-  const r = asRecord(entry);
-  return {
-    role: mapTranscriptRole(str(firstDefined(r.role, r.speaker, r.from)) ?? "system"),
-    text: str(firstDefined(r.text, r.message, r.content)) ?? "",
-    at: str(firstDefined(r.at, r.timestamp, r.created_at)) ?? "",
-  };
-}
-
-function mapTranscriptRole(raw: string): TranscriptTurn["role"] {
-  const v = raw.toLowerCase();
-  if (v === "agent" || v === "assistant" || v === "ai" || v === "bot") {
-    return "agent";
-  }
-  if (v === "caller" || v === "customer" || v === "user" || v === "human") {
-    return "caller";
-  }
-  return "system";
-}
-
+/**
+ * Confirmed live: search_available_numbers' `available_numbers` entries are
+ * plain E.164 strings, not objects — KaiCalls' real response carries no
+ * per-number country/price/capability metadata at all. `country` is echoed
+ * back from the request (or the tool's own "US" default) rather than
+ * fabricated per-number, and price fields are honestly left null rather
+ * than invented. Kept tolerant of an object shape too, in case this
+ * degrades gracefully if the live response ever gains structure.
+ */
 function mapAvailableNumber(entry: unknown, fallbackCountry: string) {
+  if (typeof entry === "string") {
+    return {
+      number: entry,
+      country: fallbackCountry,
+      capabilities: ["voice", "sms"],
+      monthly_price_usd: null,
+      setup_price_usd: null,
+    };
+  }
   const r = asRecord(entry);
   return {
     number: str(firstDefined(r.number, r.phone_number)) ?? "",
     country: str(r.country) ?? fallbackCountry,
-    // Default assumes every KaiCalls number supports voice+SMS (the whole
-    // product is voice+SMS telephony) only when the backend omits explicit
-    // per-number capability info — not a confirmed per-number field.
     capabilities: Array.isArray(r.capabilities) ? r.capabilities.filter(isString) : ["voice", "sms"],
     monthly_price_usd: num(firstDefined(r.monthly_price_usd, r.monthly_price)),
     setup_price_usd: num(firstDefined(r.setup_price_usd, r.setup_price)),

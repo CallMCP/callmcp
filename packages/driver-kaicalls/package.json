@@ -1,7 +1,7 @@
 {
   "name": "@callmcp/driver-kaicalls",
-  "version": "0.1.0",
-  "description": "CallMCP hosted driver for KaiCalls (kaicalls.com) — the flagship, fullest-parity driver, mapping the CallMCP Driver contract onto KaiCalls' live 38-tool MCP/REST telephony backend. Normative references: SPEC.md at the repo root and https://callmcp.ai/llms.txt + https://callmcp.ai/skill.md for the live endpoint/tool inventory this driver targets.",
+  "version": "0.1.1",
+  "description": "CallMCP hosted driver for KaiCalls (kaicalls.com) — the flagship, fullest-parity driver, mapping the CallMCP Driver contract onto KaiCalls' live 44-tool MCP/REST telephony backend. Normative references: SPEC.md at the repo root and a live tools/list call against https://callmcp.ai/mcp for the confirmed field-level contract this driver targets.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
