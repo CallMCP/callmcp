@@ -1,4 +1,6 @@
-# One MCP server. Any call provider. Fully local, fully hosted, or bring your own frontier model.
+# CallMCP — Phone Call MCP Server
+
+**One MCP server. Any call provider. Fully local, fully hosted, or bring your own frontier model.**
 
 [![License: MIT](https://img.shields.io/github/license/CallMCP/callmcp)](./LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/CallMCP/callmcp?style=flat&logo=github)](https://github.com/CallMCP/callmcp/stargazers)
